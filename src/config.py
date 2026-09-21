@@ -11,20 +11,12 @@ DATA_FILE = DATA_DIR / "social9_engagement.csv"
 MODEL_FILE = MODEL_DIR / "social9_xgboost.json"
 
 FEATURES = [
-    "likes",
-    "comments",
-    "shares",
-    "reach",
-    "impressions",
-    "followers",
-    "posts_count",
-    "engagement_rate",
     "day_of_week",
-    "day_of_month",
     "month",
-    "lag_1",
-    "lag_7",
-    "rolling_7",
+    "lag_1_ratio",
+    "lag_7_ratio",
+    "rolling_std_ratio",
+    "recent_trend",
 ]
 
-TARGET = "engagement"
+TARGET = "engagement_ratio"

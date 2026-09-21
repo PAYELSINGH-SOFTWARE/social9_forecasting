@@ -24,6 +24,9 @@ def load_data():
 
     df = pd.read_csv(DATA_FILE)
 
+    if "account_id" not in df.columns:
+        df["account_id"] = "account_1"
+
     missing = [
         column
         for column in REQUIRED_COLUMNS
@@ -62,8 +65,8 @@ def load_data():
         df[column] = df[column].clip(lower=0)
 
     df = (
-        df.sort_values("date")
-        .drop_duplicates("date")
+        df.sort_values(["account_id", "date"])
+        .drop_duplicates(["account_id", "date"])
         .reset_index(drop=True)
     )
 

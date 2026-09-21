@@ -12,6 +12,7 @@ from .config import (
     FEATURES,
     MODEL_DIR,
     MODEL_FILE,
+    TARGET,
 )
 
 from .data_loader import load_data
@@ -45,19 +46,15 @@ def train_model():
 
     X = df[FEATURES]
 
-    y = df["engagement"]
+    y = df[TARGET]
 
-    split_index = int(
-        len(df) * 0.8
-    )
+    position = df.groupby("account_id").cumcount()
+    account_size = df.groupby("account_id")["account_id"].transform("size")
+    test_mask = position >= (account_size * 0.8).astype(int)
 
-    X_train = X.iloc[:split_index]
-
-    X_test = X.iloc[split_index:]
-
-    y_train = y.iloc[:split_index]
-
-    y_test = y.iloc[split_index:]
+    X_train = X.loc[~test_mask]
+    X_test = X.loc[test_mask]
+    y_train = y.loc[~test_mask]
 
     print(
         f"Training records: {len(X_train)}"
@@ -86,20 +83,29 @@ def train_model():
         y_train
     )
 
-    predictions = model.predict(
-        X_test
-    )
+    ratio_predictions = np.clip(model.predict(X_test), 0, 2.5)
+    scale = df.loc[test_mask, "rolling_7"].to_numpy()
+    predictions = ratio_predictions * scale
+    actual = df.loc[test_mask, "engagement"].to_numpy()
+    baseline = df.loc[test_mask, "lag_1"].to_numpy()
 
     mae = mean_absolute_error(
-        y_test,
+        actual,
         predictions
     )
 
     rmse = np.sqrt(
         mean_squared_error(
-            y_test,
+            actual,
             predictions
         )
+    )
+    baseline_mae = mean_absolute_error(actual, baseline)
+    weighted_absolute_percentage_error = float(
+        np.abs(actual - predictions).sum() / max(actual.sum(), 1)
+    )
+    baseline_weighted_absolute_percentage_error = float(
+        np.abs(actual - baseline).sum() / max(actual.sum(), 1)
     )
 
     print()
@@ -117,6 +123,13 @@ def train_model():
     print(
         f"RMSE : {rmse:.2f}"
     )
+    print(
+        f"Naive lag-1 MAE: {baseline_mae:.2f}"
+    )
+    print(
+        f"WAPE: {weighted_absolute_percentage_error * 100:.2f}% "
+        f"(naive: {baseline_weighted_absolute_percentage_error * 100:.2f}%)"
+    )
 
     MODEL_DIR.mkdir(
         parents=True,
@@ -132,6 +145,12 @@ def train_model():
         "features": FEATURES,
         "mae": float(mae),
         "rmse": float(rmse),
+        "baseline_mae": float(baseline_mae),
+        "wape": weighted_absolute_percentage_error,
+        "baseline_wape": baseline_weighted_absolute_percentage_error,
+        "training_records": int(len(X_train)),
+        "validation_records": int(len(X_test)),
+        "dataset_type": "deterministic_synthetic",
     }
 
     with open(

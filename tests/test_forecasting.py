@@ -20,6 +20,8 @@ def test_data_loading():
     assert not df.empty
 
     assert "date" in df.columns
+    assert len(df) >= 7000
+    assert df["account_id"].nunique() >= 16
 
 
 def test_preprocessing():
@@ -46,10 +48,12 @@ def test_features():
     assert "lag_7" in df.columns
 
     assert "rolling_7" in df.columns
+    assert "engagement_ratio" in df.columns
 
 
 def test_forecast_accepts_account_history():
-    df = clean_data(load_data()).tail(10)
+    df = clean_data(load_data())
+    df = df[df["account_id"] == df["account_id"].iloc[0]].tail(30)
     history = df[
         ["date", "likes", "comments", "shares", "reach", "impressions", "followers", "posts_count"]
     ].copy()
@@ -59,6 +63,33 @@ def test_forecast_accepts_account_history():
 
     assert len(predictions) == 3
     assert all(item["predicted_engagement"] >= 0 for item in predictions)
+
+
+def test_forecast_preserves_account_scale_and_zero_history():
+    dates = [f"2026-02-{day:02d}" for day in range(1, 16)]
+
+    def history(engagement: int) -> list[dict]:
+        return [
+            {
+                "date": day,
+                "likes": int(engagement * 0.8),
+                "comments": int(engagement * 0.12),
+                "shares": engagement - int(engagement * 0.8) - int(engagement * 0.12),
+                "reach": engagement * 20,
+                "impressions": engagement * 25,
+                "followers": engagement * 10,
+                "posts_count": 2,
+            }
+            for day in dates
+        ]
+
+    zero = forecast(7, history(0))
+    low = forecast(7, history(10))
+    high = forecast(7, history(1000))
+
+    assert all(point["predicted_engagement"] == 0 for point in zero)
+    assert max(point["predicted_engagement"] for point in low) < 50
+    assert min(point["predicted_engagement"] for point in high) > 300
 
 
 def test_forecast_api_requires_service_key(monkeypatch):

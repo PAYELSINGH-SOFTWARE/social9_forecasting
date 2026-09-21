@@ -10,7 +10,6 @@ from .config import (
 
 from .data_loader import load_data
 from .preprocessing import clean_data
-from .features import create_features
 
 
 HISTORY_COLUMNS = [
@@ -27,14 +26,19 @@ HISTORY_COLUMNS = [
 
 def _history_frame(history: list[dict] | None) -> pd.DataFrame:
     if history is None:
-        return load_data()
+        frame = load_data()
+        if "account_id" in frame.columns:
+            account_ids = sorted(frame["account_id"].unique())
+            frame = frame[frame["account_id"] == account_ids[len(account_ids) // 2]]
+        return frame.reset_index(drop=True)
     if len(history) < 8:
         raise ValueError("At least 8 days of history are required")
     frame = pd.DataFrame(history, columns=HISTORY_COLUMNS)
+    frame["account_id"] = "live_account"
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
     if frame["date"].isna().any():
         raise ValueError("History contains an invalid date")
-    return frame
+    return frame.sort_values("date").drop_duplicates("date").reset_index(drop=True)
 
 
 def load_trained_model():
@@ -56,11 +60,7 @@ def forecast(
 
     df = clean_data(df)
 
-    df = create_features(df)
-
-    df = df.dropna().reset_index(
-        drop=True
-    )
+    df = df.sort_values("date").reset_index(drop=True)
 
     model = load_trained_model()
 
@@ -76,10 +76,7 @@ def forecast(
         )
 
         last_row = working_df.iloc[-1]
-
-        engagement = (
-            working_df["engagement"]
-        )
+        engagement = working_df["engagement"]
 
         lag_1 = engagement.iloc[-1]
 
@@ -89,40 +86,25 @@ def forecast(
             else engagement.mean()
         )
 
-        rolling_7 = (
-            engagement.tail(7).mean()
-        )
+        recent = engagement.tail(7)
+        rolling_7 = recent.mean()
 
-        row = {
-            "likes": last_row["likes"],
-            "comments": last_row["comments"],
-            "shares": last_row["shares"],
-            "reach": last_row["reach"],
-            "impressions": last_row["impressions"],
-            "followers": last_row["followers"],
-            "posts_count": last_row["posts_count"],
-            "engagement_rate": last_row[
-                "engagement_rate"
-            ],
-            "day_of_week": next_date.dayofweek,
-            "day_of_month": next_date.day,
-            "month": next_date.month,
-            "lag_1": lag_1,
-            "lag_7": lag_7,
-            "rolling_7": rolling_7,
-        }
+        if rolling_7 <= 0:
+            prediction = 0.0
+        else:
+            row = {
+                "day_of_week": next_date.dayofweek,
+                "month": next_date.month,
+                "lag_1_ratio": lag_1 / rolling_7,
+                "lag_7_ratio": lag_7 / rolling_7,
+                "rolling_std_ratio": recent.std(ddof=0) / rolling_7,
+                "recent_trend": (lag_1 + 1) / (lag_7 + 1),
+            }
 
-        X = pd.DataFrame(
-            [row],
-            columns=FEATURES
-        )
-
-        prediction = model.predict(X)[0]
-
-        prediction = max(
-            0,
-            float(prediction)
-        )
+            X = pd.DataFrame([row], columns=FEATURES)
+            predicted_ratio = float(model.predict(X)[0])
+            predicted_ratio = min(2.5, max(0.0, predicted_ratio))
+            prediction = predicted_ratio * rolling_7
 
         results.append({
             "date": next_date.strftime(
