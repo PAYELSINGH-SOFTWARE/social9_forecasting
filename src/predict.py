@@ -13,6 +13,30 @@ from .preprocessing import clean_data
 from .features import create_features
 
 
+HISTORY_COLUMNS = [
+    "date",
+    "likes",
+    "comments",
+    "shares",
+    "reach",
+    "impressions",
+    "followers",
+    "posts_count",
+]
+
+
+def _history_frame(history: list[dict] | None) -> pd.DataFrame:
+    if history is None:
+        return load_data()
+    if len(history) < 8:
+        raise ValueError("At least 8 days of history are required")
+    frame = pd.DataFrame(history, columns=HISTORY_COLUMNS)
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+    if frame["date"].isna().any():
+        raise ValueError("History contains an invalid date")
+    return frame
+
+
 def load_trained_model():
 
     model = xgb.XGBRegressor()
@@ -25,10 +49,10 @@ def load_trained_model():
 
 
 def forecast(
-    forecast_days=7
+    forecast_days=7,
+    history: list[dict] | None = None,
 ):
-
-    df = load_data()
+    df = _history_frame(history)
 
     df = clean_data(df)
 
