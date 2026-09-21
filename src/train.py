@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pandas as pd
 import xgboost as xgb
 
 from sklearn.metrics import (
@@ -46,7 +47,7 @@ def train_model():
 
     X = df[FEATURES]
 
-    y = df[TARGET]
+    y = df[TARGET].clip(lower=0, upper=2.5)
 
     position = df.groupby("account_id").cumcount()
     account_size = df.groupby("account_id")["account_id"].transform("size")
@@ -150,7 +151,10 @@ def train_model():
         "baseline_wape": baseline_weighted_absolute_percentage_error,
         "training_records": int(len(X_train)),
         "validation_records": int(len(X_test)),
-        "dataset_type": "deterministic_synthetic",
+        "dataset_type": ",".join(
+            sorted(df.get("source_type", pd.Series(["unknown"])).unique())
+        ),
+        "accounts": int(df["account_id"].nunique()),
     }
 
     with open(

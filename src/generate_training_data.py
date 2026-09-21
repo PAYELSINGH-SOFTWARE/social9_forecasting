@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 
-OUTPUT = Path(__file__).resolve().parents[1] / "data" / "social9_engagement.csv"
+OUTPUT = Path(__file__).resolve().parents[1] / "data" / "synthetic_engagement.csv"
 SEED = 20260921
 ACCOUNT_COUNT = 16
 DAYS_PER_ACCOUNT = 450

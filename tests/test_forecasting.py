@@ -20,8 +20,9 @@ def test_data_loading():
     assert not df.empty
 
     assert "date" in df.columns
-    assert len(df) >= 7000
-    assert df["account_id"].nunique() >= 16
+    assert len(df) >= 50000
+    assert df["account_id"].nunique() >= 250
+    assert set(df["source_type"]) == {"real_public_cc_by_4_0"}
 
 
 def test_preprocessing():

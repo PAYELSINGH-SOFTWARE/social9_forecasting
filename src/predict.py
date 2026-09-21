@@ -87,6 +87,7 @@ def forecast(
         )
 
         recent = engagement.tail(7)
+        recent_posts = working_df["posts_count"].tail(7)
         rolling_7 = recent.mean()
 
         if rolling_7 <= 0:
@@ -99,6 +100,22 @@ def forecast(
                 "lag_7_ratio": lag_7 / rolling_7,
                 "rolling_std_ratio": recent.std(ddof=0) / rolling_7,
                 "recent_trend": (lag_1 + 1) / (lag_7 + 1),
+                "lag_posts_1": float(recent_posts.iloc[-1]),
+                "posting_rate_7": float(recent_posts.gt(0).mean()),
+                "posts_rolling_7": float(recent_posts.mean()),
+                "days_since_post": min(
+                    next(
+                        (
+                            offset
+                            for offset, value in enumerate(
+                                reversed(working_df["posts_count"].tolist()), start=1
+                            )
+                            if value > 0
+                        ),
+                        30,
+                    ),
+                    30,
+                ),
             }
 
             X = pd.DataFrame([row], columns=FEATURES)
@@ -121,6 +138,7 @@ def forecast(
         new_row["date"] = next_date
 
         new_row["engagement"] = prediction
+        new_row["posts_count"] = float(recent_posts.mean())
 
         working_df = pd.concat(
             [

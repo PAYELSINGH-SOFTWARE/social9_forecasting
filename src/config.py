@@ -17,6 +17,10 @@ FEATURES = [
     "lag_7_ratio",
     "rolling_std_ratio",
     "recent_trend",
+    "lag_posts_1",
+    "posting_rate_7",
+    "posts_rolling_7",
+    "days_since_post",
 ]
 
 TARGET = "engagement_ratio"

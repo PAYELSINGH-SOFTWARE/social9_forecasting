@@ -27,6 +27,26 @@ def create_features(df):
         lambda values: values.shift(1).rolling(7, min_periods=7).std(ddof=0)
     )
 
+    posts = df.groupby("account_id", sort=False)["posts_count"]
+    df["lag_posts_1"] = posts.shift(1)
+    df["posting_rate_7"] = posts.transform(
+        lambda values: values.shift(1).gt(0).rolling(7, min_periods=7).mean()
+    )
+    df["posts_rolling_7"] = posts.transform(
+        lambda values: values.shift(1).rolling(7, min_periods=7).mean()
+    )
+
+    def days_since_post(values):
+        last_post = None
+        result = []
+        for position, value in enumerate(values):
+            result.append(30 if last_post is None else min(position - last_post, 30))
+            if value > 0:
+                last_post = position
+        return result
+
+    df["days_since_post"] = posts.transform(days_since_post)
+
     scale = df["rolling_7"].clip(lower=1)
     df["lag_1_ratio"] = df["lag_1"] / scale
     df["lag_7_ratio"] = df["lag_7"] / scale
