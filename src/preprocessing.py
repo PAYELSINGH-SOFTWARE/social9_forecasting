@@ -1,7 +1,10 @@
 import pandas as pd
 
 
-def calculate_target(df):
+def calculate_target(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate total engagement.
+    """
 
     df = df.copy()
 
@@ -14,7 +17,12 @@ def calculate_target(df):
     return df
 
 
-def calculate_engagement_rate(df):
+def calculate_engagement_rate(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Calculate engagement rate based on reach.
+    """
 
     df = df.copy()
 
@@ -27,13 +35,44 @@ def calculate_engagement_rate(df):
         / df.loc[mask, "reach"]
     ) * 100
 
+    # Prevent invalid values
+    df["engagement_rate"] = (
+        df["engagement_rate"]
+        .replace([float("inf"), -float("inf")], 0)
+        .fillna(0)
+        .clip(lower=0)
+    )
+
     return df
 
 
-def clean_data(df):
+def clean_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean and prepare data for forecasting.
+    """
 
     df = df.copy()
 
+    # Ensure numeric columns are valid
+    numeric_columns = [
+        "likes",
+        "comments",
+        "shares",
+        "reach",
+        "impressions",
+        "followers",
+        "posts_count",
+    ]
+
+    for column in numeric_columns:
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="coerce",
+        ).fillna(0)
+
+        df[column] = df[column].clip(lower=0)
+
+    # Calculate target and engagement rate
     df = calculate_target(df)
 
     df = calculate_engagement_rate(df)

@@ -3,71 +3,97 @@ from datetime import timedelta
 import pandas as pd
 import xgboost as xgb
 
-from .config import (
-    FEATURES,
-    MODEL_FILE,
-)
-
-from .data_loader import load_data
+from .config import FEATURES, MODEL_FILE
+from .api_data_loader import load_data_from_api
 from .preprocessing import clean_data
+from .features import create_features
 
 
-HISTORY_COLUMNS = [
-    "date",
-    "likes",
-    "comments",
-    "shares",
-    "reach",
-    "impressions",
-    "followers",
-    "posts_count",
-]
-
-
-def _history_frame(history: list[dict] | None) -> pd.DataFrame:
-    if history is None:
-        frame = load_data()
-        if "account_id" in frame.columns:
-            account_ids = sorted(frame["account_id"].unique())
-            frame = frame[frame["account_id"] == account_ids[len(account_ids) // 2]]
-        return frame.reset_index(drop=True)
-    if len(history) < 8:
-        raise ValueError("At least 8 days of history are required")
-    frame = pd.DataFrame(history, columns=HISTORY_COLUMNS)
-    frame["account_id"] = "live_account"
-    frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
-    if frame["date"].isna().any():
-        raise ValueError("History contains an invalid date")
-    return frame.sort_values("date").drop_duplicates("date").reset_index(drop=True)
-
+# =========================
+# LOAD TRAINED MODEL
+# =========================
 
 def load_trained_model():
-
     model = xgb.XGBRegressor()
-
-    model.load_model(
-        str(MODEL_FILE)
-    )
-
+    model.load_model(str(MODEL_FILE))
     return model
 
 
-def forecast(
-    forecast_days=7,
-    history: list[dict] | None = None,
-):
-    df = _history_frame(history)
+# =========================
+# FILTER INSTAGRAM DATA
+# =========================
 
+def filter_instagram_data(df, instagram_id=None):
+
+    if instagram_id is None:
+        return df
+
+    if "instagram_id" not in df.columns:
+        raise ValueError(
+            "Instagram ID column not found in dataset."
+        )
+
+    filtered_df = df[
+        df["instagram_id"].astype(str).str.strip()
+        == str(instagram_id).strip()
+    ].copy()
+
+    if filtered_df.empty:
+        raise ValueError(
+            f"No data found for Instagram ID: {instagram_id}"
+        )
+
+    return filtered_df
+
+
+# =========================
+# FORECASTING FUNCTION
+# =========================
+
+def forecast(
+    historical_data: list[dict],
+    forecast_days: int = 30,
+    instagram_id: str | None = None
+):
+
+    if forecast_days < 1 or forecast_days > 90:
+        raise ValueError(
+            "forecast_days must be between 1 and 90."
+        )
+
+    if not historical_data:
+        raise ValueError(
+            "Historical data cannot be empty."
+        )
+
+    # Load data from API request
+    df = load_data_from_api(historical_data)
+
+    # Filter Instagram account
+    df = filter_instagram_data(df, instagram_id)
+
+    # Clean data
     df = clean_data(df)
 
-    df = df.sort_values("date").reset_index(drop=True)
+    # Create features
+    df = create_features(df)
 
+    # Remove missing feature values
+    df = df.dropna().reset_index(drop=True)
+
+    if df.empty:
+        raise ValueError(
+            "No valid data available after preprocessing. "
+            "At least 8 historical records are recommended."
+        )
+
+    # Load trained model
     model = load_trained_model()
 
     results = []
-
     working_df = df.copy()
 
+    # Generate forecast
     for _ in range(forecast_days):
 
         next_date = (
@@ -86,59 +112,53 @@ def forecast(
             else engagement.mean()
         )
 
-        recent = engagement.tail(7)
-        recent_posts = working_df["posts_count"].tail(7)
-        rolling_7 = recent.mean()
+        rolling_7 = engagement.tail(7).mean()
 
-        if rolling_7 <= 0:
-            prediction = 0.0
-        else:
-            row = {
-                "day_of_week": next_date.dayofweek,
-                "month": next_date.month,
-                "lag_1_ratio": lag_1 / rolling_7,
-                "lag_7_ratio": lag_7 / rolling_7,
-                "rolling_std_ratio": recent.std(ddof=0) / rolling_7,
-                "recent_trend": (lag_1 + 1) / (lag_7 + 1),
-                "lag_posts_1": float(recent_posts.iloc[-1]),
-                "posting_rate_7": float(recent_posts.gt(0).mean()),
-                "posts_rolling_7": float(recent_posts.mean()),
-                "days_since_post": min(
-                    next(
-                        (
-                            offset
-                            for offset, value in enumerate(
-                                reversed(working_df["posts_count"].tolist()), start=1
-                            )
-                            if value > 0
-                        ),
-                        30,
-                    ),
-                    30,
-                ),
-            }
+        row = {
+            "likes": last_row["likes"],
+            "comments": last_row["comments"],
+            "shares": last_row["shares"],
+            "reach": last_row["reach"],
+            "impressions": last_row["impressions"],
+            "followers": last_row["followers"],
+            "posts_count": last_row["posts_count"],
+            "engagement_rate": last_row["engagement_rate"],
+            "day_of_week": next_date.dayofweek,
+            "day_of_month": next_date.day,
+            "month": next_date.month,
+            "lag_1": lag_1,
+            "lag_7": lag_7,
+            "rolling_7": rolling_7,
+        }
 
-            X = pd.DataFrame([row], columns=FEATURES)
-            predicted_ratio = float(model.predict(X)[0])
-            predicted_ratio = min(2.5, max(0.0, predicted_ratio))
-            prediction = predicted_ratio * rolling_7
+        X = pd.DataFrame(
+            [row],
+            columns=FEATURES
+        )
+
+        prediction = float(model.predict(X)[0])
+        prediction = max(0.0, prediction)
+
+        account_id = (
+            str(instagram_id)
+            if instagram_id is not None
+            else str(last_row["instagram_id"])
+        )
 
         results.append({
-            "date": next_date.strftime(
-                "%Y-%m-%d"
-            ),
+            "instagram_id": account_id,
+            "date": next_date.strftime("%Y-%m-%d"),
             "predicted_engagement": round(
                 prediction,
                 2
-            )
+            ),
         })
 
+        # Update working data for the next prediction
         new_row = last_row.copy()
 
         new_row["date"] = next_date
-
         new_row["engagement"] = prediction
-        new_row["posts_count"] = float(recent_posts.mean())
 
         working_df = pd.concat(
             [
@@ -151,16 +171,35 @@ def forecast(
     return results
 
 
+# =========================
+# TEST FORECASTING
+# =========================
+
 if __name__ == "__main__":
 
-    predictions = forecast(7)
+    sample_data = [
+        {
+            "instagram_id": "account_001",
+            "date": "2026-09-01",
+            "likes": 100,
+            "comments": 20,
+            "shares": 10,
+            "reach": 1000,
+            "impressions": 1500,
+            "followers": 5000,
+            "posts_count": 2
+        }
+    ]
+
+    predictions = forecast(
+        historical_data=sample_data,
+        forecast_days=30,
+        instagram_id="account_001"
+    )
 
     for prediction in predictions:
-
         print(
             prediction["date"],
             "→",
-            prediction[
-                "predicted_engagement"
-            ]
+            prediction["predicted_engagement"]
         )

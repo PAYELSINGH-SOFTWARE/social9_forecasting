@@ -1,7 +1,6 @@
 import json
 
 import numpy as np
-import pandas as pd
 import xgboost as xgb
 
 from sklearn.metrics import (
@@ -13,7 +12,6 @@ from .config import (
     FEATURES,
     MODEL_DIR,
     MODEL_FILE,
-    TARGET,
 )
 
 from .data_loader import load_data
@@ -27,43 +25,43 @@ def train_model():
 
     df = load_data()
 
-    print(
-        f"Records loaded: {len(df)}"
-    )
+    print(f"Records loaded: {len(df)}")
 
+    # Clean data
     df = clean_data(df)
 
+    # Create Instagram-specific features
     df = create_features(df)
 
-    df = df.dropna().reset_index(
-        drop=True
-    )
+    # Remove rows without lag/rolling values
+    df = df.dropna().reset_index(drop=True)
 
     if len(df) < 10:
-
         raise ValueError(
-            "Not enough historical data."
+            "Not enough historical data after feature creation."
         )
 
+    # Sort globally by date for chronological train/test split
+    df = df.sort_values("date").reset_index(drop=True)
+
     X = df[FEATURES]
+    y = df["engagement"]
 
-    y = df[TARGET].clip(lower=0, upper=2.5)
+    split_index = int(len(df) * 0.8)
 
-    position = df.groupby("account_id").cumcount()
-    account_size = df.groupby("account_id")["account_id"].transform("size")
-    test_mask = position >= (account_size * 0.8).astype(int)
+    if split_index <= 0 or split_index >= len(df):
+        raise ValueError(
+            "Invalid train/test split. Add more historical data."
+        )
 
-    X_train = X.loc[~test_mask]
-    X_test = X.loc[test_mask]
-    y_train = y.loc[~test_mask]
+    X_train = X.iloc[:split_index]
+    X_test = X.iloc[split_index:]
 
-    print(
-        f"Training records: {len(X_train)}"
-    )
+    y_train = y.iloc[:split_index]
+    y_test = y.iloc[split_index:]
 
-    print(
-        f"Testing records: {len(X_test)}"
-    )
+    print(f"Training records: {len(X_train)}")
+    print(f"Testing records: {len(X_test)}")
 
     model = xgb.XGBRegressor(
         n_estimators=300,
@@ -75,86 +73,43 @@ def train_model():
         random_state=42,
     )
 
-    print(
-        "Training XGBoost model..."
-    )
+    print("Training XGBoost model...")
 
-    model.fit(
-        X_train,
-        y_train
-    )
+    model.fit(X_train, y_train)
 
-    ratio_predictions = np.clip(model.predict(X_test), 0, 2.5)
-    scale = df.loc[test_mask, "rolling_7"].to_numpy()
-    predictions = ratio_predictions * scale
-    actual = df.loc[test_mask, "engagement"].to_numpy()
-    baseline = df.loc[test_mask, "lag_1"].to_numpy()
+    predictions = model.predict(X_test)
 
-    mae = mean_absolute_error(
-        actual,
-        predictions
-    )
+    mae = mean_absolute_error(y_test, predictions)
 
     rmse = np.sqrt(
-        mean_squared_error(
-            actual,
-            predictions
-        )
-    )
-    baseline_mae = mean_absolute_error(actual, baseline)
-    weighted_absolute_percentage_error = float(
-        np.abs(actual - predictions).sum() / max(actual.sum(), 1)
-    )
-    baseline_weighted_absolute_percentage_error = float(
-        np.abs(actual - baseline).sum() / max(actual.sum(), 1)
+        mean_squared_error(y_test, predictions)
     )
 
     print()
-    print(
-        "MODEL PERFORMANCE"
-    )
-    print(
-        "-----------------"
-    )
+    print("MODEL PERFORMANCE")
+    print("-----------------")
+    print(f"MAE  : {mae:.2f}")
+    print(f"RMSE : {rmse:.2f}")
 
-    print(
-        f"MAE  : {mae:.2f}"
-    )
-
-    print(
-        f"RMSE : {rmse:.2f}"
-    )
-    print(
-        f"Naive lag-1 MAE: {baseline_mae:.2f}"
-    )
-    print(
-        f"WAPE: {weighted_absolute_percentage_error * 100:.2f}% "
-        f"(naive: {baseline_weighted_absolute_percentage_error * 100:.2f}%)"
-    )
-
+    # Save model
     MODEL_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    model.save_model(
-        str(MODEL_FILE)
-    )
+    model.save_model(str(MODEL_FILE))
 
+    # Save metadata
     metadata = {
         "model": "XGBoost",
         "features": FEATURES,
         "mae": float(mae),
         "rmse": float(rmse),
-        "baseline_mae": float(baseline_mae),
-        "wape": weighted_absolute_percentage_error,
-        "baseline_wape": baseline_weighted_absolute_percentage_error,
-        "training_records": int(len(X_train)),
-        "validation_records": int(len(X_test)),
-        "dataset_type": ",".join(
-            sorted(df.get("source_type", pd.Series(["unknown"])).unique())
+        "instagram_accounts": int(
+            df["instagram_id"].nunique()
         ),
-        "accounts": int(df["account_id"].nunique()),
+        "training_records": len(X_train),
+        "testing_records": len(X_test),
     }
 
     with open(
@@ -162,7 +117,6 @@ def train_model():
         "w",
         encoding="utf-8"
     ) as file:
-
         json.dump(
             metadata,
             file,
@@ -170,9 +124,7 @@ def train_model():
         )
 
     print()
-    print(
-        f"Model saved: {MODEL_FILE}"
-    )
+    print(f"Model saved: {MODEL_FILE}")
 
 
 if __name__ == "__main__":

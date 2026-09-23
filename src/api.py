@@ -1,7 +1,6 @@
-import hmac
-import os
+from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .predict import forecast
@@ -20,37 +19,26 @@ app = FastAPI(
 # REQUEST MODELS
 # =========================
 
-class DailyMetric(BaseModel):
-    date: str
-    likes: int = Field(default=0, ge=0)
-    comments: int = Field(default=0, ge=0)
-    shares: int = Field(default=0, ge=0)
-    reach: int = Field(ge=0)
-    impressions: int = Field(ge=0)
-    followers: int = Field(ge=0)
-    posts_count: int = Field(default=0, ge=0)
-
-
 class ForecastRequest(BaseModel):
+
+    instagram_id: str = Field(
+        min_length=1,
+        max_length=100
+    )
+
+    historical_data: list[dict[str, Any]] = Field(
+        min_length=8
+    )
+
     forecast_days: int = Field(
-        default=7,
+        default=30,
         ge=1,
         le=90
     )
-    history: list[DailyMetric] | None = Field(default=None, min_length=8, max_length=365)
-
-
-def require_service_key(x_social9_forecasting_key: str | None = Header(default=None)) -> None:
-    expected = os.getenv("FORECASTING_API_KEY", "").strip()
-    if not expected:
-        raise HTTPException(status_code=503, detail="Forecasting service authentication is not configured")
-    if not x_social9_forecasting_key or not hmac.compare_digest(
-        x_social9_forecasting_key, expected
-    ):
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 class CaptionRequest(BaseModel):
+
     topic: str = Field(
         default="AI forecasting",
         min_length=1,
@@ -71,6 +59,7 @@ class CaptionRequest(BaseModel):
 
 
 class CalendarRequest(BaseModel):
+
     platform: str = Field(
         default="Instagram",
         min_length=1,
@@ -91,6 +80,7 @@ class CalendarRequest(BaseModel):
 
 
 class AITextRequest(BaseModel):
+
     prompt: str = Field(
         min_length=1,
         max_length=2000
@@ -103,6 +93,7 @@ class AITextRequest(BaseModel):
 
 @app.get("/")
 def root():
+
     return {
         "service": "Social9 Forecasting",
         "status": "running"
@@ -111,6 +102,7 @@ def root():
 
 @app.get("/health")
 def health():
+
     return {
         "status": "healthy"
     }
@@ -121,35 +113,36 @@ def health():
 # =========================
 
 @app.post("/forecast")
-def create_forecast(
-    request: ForecastRequest,
-    x_social9_forecasting_key: str | None = Header(default=None),
-):
+def create_forecast(request: ForecastRequest):
+
     try:
-        require_service_key(x_social9_forecasting_key)
+
         predictions = forecast(
-            request.forecast_days,
-            [item.model_dump() for item in request.history] if request.history else None,
+            historical_data=request.historical_data,
+            forecast_days=request.forecast_days,
+            instagram_id=request.instagram_id
         )
 
         return {
             "model": "XGBoost",
+            "instagram_id": request.instagram_id,
             "forecast_days": request.forecast_days,
             "predictions": predictions
         }
 
-    except HTTPException:
-        raise
-    except (FileNotFoundError, ValueError) as error:
+    except ValueError as error:
+
         raise HTTPException(
-            status_code=422,
+            status_code=400,
             detail=str(error)
-        ) from error
+        )
+
     except Exception as error:
+
         raise HTTPException(
             status_code=500,
-            detail="Forecasting is temporarily unavailable"
-        ) from error
+            detail=str(error)
+        )
 
 
 # =========================
@@ -158,7 +151,9 @@ def create_forecast(
 
 @app.post("/ai-caption")
 def create_ai_caption(request: CaptionRequest):
+
     try:
+
         prompt = f"""
 You are a social media content expert.
 
@@ -184,6 +179,7 @@ Requirements:
         }
 
     except Exception as error:
+
         raise HTTPException(
             status_code=500,
             detail=str(error)
@@ -196,7 +192,9 @@ Requirements:
 
 @app.post("/ai-text")
 def create_ai_text(request: AITextRequest):
+
     try:
+
         result = generate_ai_text(
             request.prompt
         )
@@ -207,6 +205,7 @@ def create_ai_text(request: AITextRequest):
         }
 
     except Exception as error:
+
         raise HTTPException(
             status_code=500,
             detail=str(error)
@@ -219,7 +218,9 @@ def create_ai_text(request: AITextRequest):
 
 @app.post("/ai-calendar")
 def create_ai_calendar(request: CalendarRequest):
+
     try:
+
         calendar = generate_content_calendar(
             platform=request.platform,
             duration_days=request.duration_days,
@@ -234,6 +235,7 @@ def create_ai_calendar(request: CalendarRequest):
         }
 
     except Exception as error:
+
         raise HTTPException(
             status_code=500,
             detail=str(error)
