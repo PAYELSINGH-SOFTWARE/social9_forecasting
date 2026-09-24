@@ -1,7 +1,7 @@
 import hmac
 import os
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from .predict import forecast
@@ -156,7 +156,7 @@ def create_forecast(
 # AI CAPTION API
 # =========================
 
-@app.post("/ai-caption")
+@app.post("/ai-caption", dependencies=[Depends(require_service_key)])
 def create_ai_caption(request: CaptionRequest):
     try:
         prompt = f"""
@@ -186,7 +186,7 @@ Requirements:
     except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail="AI content generation is temporarily unavailable"
         )
 
 
@@ -194,7 +194,7 @@ Requirements:
 # AI TEXT API
 # =========================
 
-@app.post("/ai-text")
+@app.post("/ai-text", dependencies=[Depends(require_service_key)])
 def create_ai_text(request: AITextRequest):
     try:
         result = generate_ai_text(
@@ -209,7 +209,7 @@ def create_ai_text(request: AITextRequest):
     except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail="AI content generation is temporarily unavailable"
         )
 
 
@@ -217,7 +217,7 @@ def create_ai_text(request: AITextRequest):
 # AI CONTENT CALENDAR API
 # =========================
 
-@app.post("/ai-calendar")
+@app.post("/ai-calendar", dependencies=[Depends(require_service_key)])
 def create_ai_calendar(request: CalendarRequest):
     try:
         calendar = generate_content_calendar(
@@ -236,5 +236,5 @@ def create_ai_calendar(request: CalendarRequest):
     except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail="AI content generation is temporarily unavailable"
         )

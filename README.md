@@ -25,3 +25,20 @@ uvicorn src.api:app --reload
 `POST /forecast` accepts `forecast_days` and an optional account-specific `history`
 array containing at least eight daily metric records. Production requests must send
 the shared key in `X-Social9-Forecasting-Key`.
+
+
+## Connect to Social9
+
+Set `GEMINI_API_KEY` and `FORECASTING_API_KEY` on this service. All POST endpoints,
+including `/ai-text`, `/ai-caption` and `/ai-calendar`, require the
+`X-Social9-Forecasting-Key` header. Health endpoints remain public.
+
+On `social9-backend`, set `AI_PROVIDER=forecasting`, `FORECASTING_API_URL` to this
+service's base URL, and `FORECASTING_API_KEY` to the same shared key. Deploy this
+service before activating that backend configuration. The backend calls
+`/ai-text` for the Create post assistant and `/forecast` for engagement forecasts.
+Gemini credentials remain exclusively on this service. The Social9 backend
+handles user authentication, subscription checks and assistant rate limits.
+
+Run `python -m pytest -q tests/test_ai_integration.py` to verify AI endpoint
+authentication and safe error responses without calling Gemini or spending credits.
