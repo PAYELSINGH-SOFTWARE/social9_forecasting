@@ -2,7 +2,7 @@ import hmac
 import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from .predict import forecast
 from .gemini_service import generate_ai_text
@@ -37,7 +37,8 @@ class ForecastRequest(BaseModel):
         ge=1,
         le=90
     )
-    history: list[DailyMetric] | None = Field(default=None, min_length=8, max_length=365)
+    history: list[DailyMetric] | None = Field(default=None, min_length=8, max_length=365, validation_alias=AliasChoices("history", "historical_data"))
+    instagram_id: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 def require_service_key(x_social9_forecasting_key: str | None = Header(default=None)) -> None:

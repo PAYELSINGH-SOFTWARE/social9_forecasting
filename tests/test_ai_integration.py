@@ -28,3 +28,20 @@ def test_ai_error_does_not_expose_provider_details(monkeypatch):
             headers={"X-Social9-Forecasting-Key": "test-service-key"})
     assert response.status_code == 500
     assert "private" not in response.text
+
+
+def test_new_history_name_remains_compatible(monkeypatch):
+    monkeypatch.setenv("FORECASTING_API_KEY", "test-service-key")
+    history = [{"date": f"2026-09-{day:02d}", "reach": 10,
+        "impressions": 20, "followers": 30} for day in range(1, 9)]
+    captured = []
+    def fake_forecast(days, records):
+        captured.extend(records)
+        return [{"date": "2026-09-09", "predicted_engagement": 1}]
+    monkeypatch.setattr(api, "forecast", fake_forecast)
+    with TestClient(api.app) as client:
+        response = client.post("/forecast", json={"forecast_days": 1,
+            "historical_data": history, "instagram_id": "test-account"},
+            headers={"X-Social9-Forecasting-Key": "test-service-key"})
+    assert response.status_code == 200
+    assert len(captured) == 8

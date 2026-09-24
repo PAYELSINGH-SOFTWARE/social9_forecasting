@@ -42,3 +42,10 @@ handles user authentication, subscription checks and assistant rate limits.
 
 Run `python -m pytest -q tests/test_ai_integration.py` to verify AI endpoint
 authentication and safe error responses without calling Gemini or spending credits.
+
+
+Deployment compatibility: the API accepts both `history` (Social9 backend) and
+`historical_data` (new client spelling). The validated ratio-based model and
+licensed training-data loader are retained: the alternative upstream training
+pipeline referenced a removed DATA_FILE setting and changed the feature schema.
+Re-training and the forecast regression tests must pass before deployment.
