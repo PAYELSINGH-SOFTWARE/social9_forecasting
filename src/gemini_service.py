@@ -10,8 +10,9 @@ env_path = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(env_path)
 logger = logging.getLogger(__name__)
 
-def generate_ai_text(prompt: str) -> str:
+def generate_ai_text(prompt: str, *, json_mode: bool = False) -> str:
     from google import genai
+    from google.genai import types
 
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
@@ -19,7 +20,8 @@ def generate_ai_text(prompt: str) -> str:
     client = genai.Client(api_key=api_key)
     model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
     try:
-        response = client.models.generate_content(model=model, contents=prompt)
+        config = types.GenerateContentConfig(response_mime_type="application/json") if json_mode else None
+        response = client.models.generate_content(model=model, contents=prompt, config=config)
     except Exception as error:
         # Provider messages can contain request details. Log only safe diagnostics.
         logger.error(

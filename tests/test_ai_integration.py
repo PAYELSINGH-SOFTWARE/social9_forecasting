@@ -18,6 +18,22 @@ def test_content_endpoints_require_service_auth(monkeypatch, path, payload):
         assert client.post(path, json=payload, headers={"X-Social9-Forecasting-Key": "test-service-key"}).status_code == 200
 
 
+def test_calendar_requests_json_from_gemini(monkeypatch):
+    from google import genai
+    from src.ai_calendar import generate_content_calendar
+
+    captured = {}
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            captured.update(kwargs)
+            return type("Response", (), {"text": '{"items": []}'})()
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(genai, "Client", lambda **kwargs: type("Client", (), {"models": FakeModels()})())
+    assert generate_content_calendar("instagram", 7, "bakery") == '{"items": []}'
+    assert captured["config"].response_mime_type == "application/json"
+    assert "exactly 7 entries" in captured["contents"]
+
+
 def test_ai_error_does_not_expose_provider_details(monkeypatch):
     monkeypatch.setenv("FORECASTING_API_KEY", "test-service-key")
     def fail(prompt):
