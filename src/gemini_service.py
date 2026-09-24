@@ -17,7 +17,7 @@ def generate_ai_text(prompt: str) -> str:
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
     client = genai.Client(api_key=api_key)
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
     try:
         response = client.models.generate_content(model=model, contents=prompt)
     except Exception as error:
