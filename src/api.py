@@ -72,6 +72,9 @@ class CaptionRequest(BaseModel):
 
 
 class CalendarRequest(BaseModel):
+    business_context: str = Field(default="", max_length=6000)
+    start_date: str = Field(default="", max_length=10)
+
     platform: str = Field(
         default="Instagram",
         min_length=1,
@@ -79,7 +82,7 @@ class CalendarRequest(BaseModel):
     )
 
     duration_days: int = Field(
-        default=7,
+        default=30,
         ge=1,
         le=30
     )
@@ -224,7 +227,9 @@ def create_ai_calendar(request: CalendarRequest):
         calendar = generate_content_calendar(
             platform=request.platform,
             duration_days=request.duration_days,
-            topic=request.topic
+            topic=request.topic,
+            business_context=request.business_context,
+            start_date=request.start_date,
         )
 
         return {

@@ -29,9 +29,11 @@ def test_calendar_requests_json_from_gemini(monkeypatch):
             return type("Response", (), {"text": '{"items": []}'})()
     monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
     monkeypatch.setattr(genai, "Client", lambda **kwargs: type("Client", (), {"models": FakeModels()})())
-    assert generate_content_calendar("instagram", 7, "bakery") == '{"items": []}'
+    assert generate_content_calendar("instagram", 30, "bakery", "Custom cakes for local families", "2026-10-01") == '{"items": []}'
     assert captured["config"].response_mime_type == "application/json"
-    assert "exactly 7 entries" in captured["contents"]
+    assert "exactly 30 entries" in captured["contents"]
+    assert "Custom cakes for local families" in captured["contents"]
+    assert "2026-10-01" in captured["contents"]
 
 
 def test_ai_error_does_not_expose_provider_details(monkeypatch):
