@@ -1,8 +1,10 @@
+import base64
+import binascii
 import hmac
 import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from .predict import forecast
 from .gemini_service import generate_ai_text
@@ -95,9 +97,30 @@ class CalendarRequest(BaseModel):
 
 
 class AITextRequest(BaseModel):
+    @field_validator("images")
+    @classmethod
+    def validate_images(cls, images: list[str]) -> list[str]:
+        total = 0
+        for image in images:
+            header, separator, encoded = image.partition(",")
+            if not separator or header not in {"data:image/jpeg;base64", "data:image/png;base64"} or len(encoded) > 2_800_000:
+                raise ValueError("Use JPG or PNG photos up to 2 MB each")
+            try:
+                raw = base64.b64decode(encoded, validate=True)
+            except (ValueError, binascii.Error) as error:
+                raise ValueError("Invalid photo data") from error
+            if not (raw.startswith(b"\xff\xd8\xff") if "jpeg" in header else raw.startswith(b"\x89PNG\r\n\x1a\n")):
+                raise ValueError("Invalid photo format")
+            total += len(raw)
+        if total > 8_000_000:
+            raise ValueError("Photos exceed the 8 MB assistant limit")
+        return images
+
+
+    images: list[str] = Field(default_factory=list, max_length=10)
     prompt: str = Field(
         min_length=1,
-        max_length=2000
+        max_length=6000
     )
 
 
@@ -202,7 +225,7 @@ Requirements:
 def create_ai_text(request: AITextRequest):
     try:
         result = generate_ai_text(
-            request.prompt
+            request.prompt, **({"images": request.images, "json_mode": True} if request.images else {})
         )
 
         return {

@@ -1,4 +1,21 @@
 import pytest
+
+def test_photo_input_reaches_gemini_as_image_bytes(monkeypatch):
+    import base64
+    from google import genai
+    from src.gemini_service import generate_ai_text
+    captured = {}
+    class Models:
+        def generate_content(self, **kwargs):
+            captured.update(kwargs)
+            return type("Response", (), {"text": "caption"})()
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(genai, "Client", lambda **kwargs: type("Client", (), {"models": Models()})())
+    raw = b"\x89PNG\r\n\x1a\nphoto"
+    photo = "data:image/png;base64," + base64.b64encode(raw).decode()
+    assert generate_ai_text("Caption this", images=[photo], json_mode=True) == "caption"
+    assert captured["contents"][1].inline_data.data == raw
+    assert captured["contents"][1].inline_data.mime_type == "image/png"
 from fastapi.testclient import TestClient
 from src import api
 
