@@ -74,7 +74,7 @@ class CaptionRequest(BaseModel):
 
 
 class CalendarRequest(BaseModel):
-    business_context: str = Field(default="", max_length=6000)
+    business_context: str = Field(default="", max_length=16000)
     start_date: str = Field(default="", max_length=10)
 
     platform: str = Field(
