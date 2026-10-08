@@ -53,6 +53,34 @@ def test_calendar_requests_json_from_gemini(monkeypatch):
     assert "2026-10-01" in captured["contents"]
 
 
+def test_calendar_passes_frequency_and_growth_context_to_gemini(monkeypatch):
+    from google import genai
+    from src.ai_calendar import generate_content_calendar
+
+    captured = {}
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            captured.update(kwargs)
+            return type("Response", (), {"text": '{"items": []}'})()
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(genai, "Client", lambda **kwargs: type("Client", (), {"models": FakeModels()})())
+    generate_content_calendar("facebook", 30, "cakes", '{"growth_context":{"tracking":{"content":"Try process videos"}}}', "2026-10-09", posts_per_day=3)
+    assert "exactly 90 entries" in captured["contents"]
+    assert "Try process videos" in captured["contents"]
+    assert "day 1 slot 1 through slot 3" in captured["contents"]
+    assert "Do not fabricate analytics" in captured["contents"]
+
+
+def test_calendar_api_forwards_requested_frequency(monkeypatch):
+    monkeypatch.setenv("FORECASTING_API_KEY", "test-service-key")
+    captured = {}
+    monkeypatch.setattr(api, "generate_content_calendar", lambda **kwargs: captured.update(kwargs) or '{"items": []}')
+    with TestClient(api.app) as client:
+        response = client.post("/ai-calendar", json={"topic": "cakes", "posts_per_day": 2}, headers={"X-Social9-Forecasting-Key": "test-service-key"})
+    assert response.status_code == 200
+    assert captured["posts_per_day"] == 2
+
+
 def test_ai_error_does_not_expose_provider_details(monkeypatch):
     monkeypatch.setenv("FORECASTING_API_KEY", "test-service-key")
     def fail(prompt):
