@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from .predict import forecast
-from .gemini_service import generate_ai_text
+from .gemini_service import generate_ai_text, AIQuotaExhausted
 from .ai_calendar import generate_content_calendar
 
 
@@ -211,6 +211,8 @@ Requirements:
             "caption": caption
         }
 
+    except AIQuotaExhausted:
+        raise HTTPException(429, "Free AI quota exhausted. Please try again later.")
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -234,6 +236,8 @@ def create_ai_text(request: AITextRequest):
             "response": result
         }
 
+    except AIQuotaExhausted:
+        raise HTTPException(429, "Free AI quota exhausted. Please try again later.")
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -264,6 +268,8 @@ def create_ai_calendar(request: CalendarRequest):
             "calendar": calendar
         }
 
+    except AIQuotaExhausted:
+        raise HTTPException(429, "Free AI quota exhausted. Please try again later.")
     except Exception as error:
         raise HTTPException(
             status_code=500,

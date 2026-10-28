@@ -13,4 +13,8 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-3.5-flash-lite
+        value: gemini-3.8-flash
+      - key: GEMINI_FREE_TIER_ONLY
+        value: "true"
+      - key: GEMINI_MAX_OUTPUT_TOKENS
+        value: "32768"

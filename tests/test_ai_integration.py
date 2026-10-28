@@ -1,5 +1,45 @@
 import pytest
 
+
+def test_default_model_uses_free_eligible_flash_with_bounded_output(monkeypatch):
+    from google import genai
+    from src.gemini_service import generate_ai_text
+    captured = {}
+    class Models:
+        def generate_content(self, **kwargs):
+            captured.update(kwargs)
+            return type("Response", (), {"text": "Useful caption"})()
+    monkeypatch.setenv("GEMINI_API_KEY", "fixture-key")
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    monkeypatch.setattr(genai, "Client", lambda **kwargs: type("Client", (), {"models": Models()})())
+    assert generate_ai_text("A specific bakery hook") == "Useful caption"
+    assert captured["model"] == "gemini-3.8-flash"
+    assert captured["config"].max_output_tokens <= 32768
+    assert captured["config"].thinking_config.thinking_level.value == "MEDIUM"
+
+
+def test_free_mode_rejects_paid_only_model_before_client_creation(monkeypatch):
+    from google import genai
+    from src.gemini_service import generate_ai_text
+    monkeypatch.setenv("GEMINI_API_KEY", "fixture-key")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-4-argon")
+    monkeypatch.setenv("GEMINI_FREE_TIER_ONLY", "true")
+    monkeypatch.setattr(genai, "Client", lambda **kwargs: pytest.fail("Paid client must not be created"))
+    with pytest.raises(RuntimeError, match="free-tier-only"):
+        generate_ai_text("A caption")
+
+
+def test_quota_exhaustion_is_reported_without_paid_fallback(monkeypatch):
+    from src.gemini_service import AIQuotaExhausted
+    def exhausted(*args, **kwargs):
+        raise AIQuotaExhausted("Free quota exhausted")
+    monkeypatch.setenv("FORECASTING_API_KEY", "fixture-key")
+    monkeypatch.setattr(api, "generate_ai_text", exhausted)
+    with TestClient(api.app) as client:
+        response = client.post("/ai-text", json={"prompt":"A bakery tip"}, headers={"X-Social9-Forecasting-Key":"fixture-key"})
+    assert response.status_code == 429
+    assert "Free AI quota exhausted" in response.json()["detail"]
+
 def test_photo_input_reaches_gemini_as_image_bytes(monkeypatch):
     import base64
     from google import genai

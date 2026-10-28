@@ -49,3 +49,10 @@ Deployment compatibility: the API accepts both `history` (Social9 backend) and
 licensed training-data loader are retained: the alternative upstream training
 pipeline referenced a removed DATA_FILE setting and changed the feature schema.
 Re-training and the forecast regression tests must pass before deployment.
+
+
+### Free-tier content model
+
+AI text, photo assistance and calendars default to `gemini-3.8-flash` with bounded output and medium thinking. Use a Gemini project on the Free tier without a billing account. `GEMINI_FREE_TIER_ONLY=true` rejects paid-only model choices; it cannot inspect Google project billing status. Optional `gemini-3.5-flash-lite` is also allowed. There is no automatic model downgrade or paid fallback. A provider quota error returns HTTP 429. Free quotas apply to the entire project and are not unlimited per Social9 user. Configure `GEMINI_API_KEY` and `FORECASTING_API_KEY` as server secrets; `.env.example` lists the non-secret defaults. See https://ai.google.dev/gemini-api/docs/pricing for eligibility, limits and provider data-use terms.
+
+Calendar instructions use the backend's brand-scoped feedback as preferences, separately from measured analytics. They require platform-appropriate, executable ideas with concrete hooks and an available metric to review.
