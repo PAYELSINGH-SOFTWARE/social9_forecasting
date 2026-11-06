@@ -72,4 +72,4 @@ Make every day distinct and practical. Do not invent business facts, prices,
 testimonials, statistics, or guarantees. Do not include markdown code blocks.
 """
 
-    return generate_ai_text(prompt, json_mode=True)
+    return generate_ai_text(prompt, json_mode=True, max_output_tokens=32768)

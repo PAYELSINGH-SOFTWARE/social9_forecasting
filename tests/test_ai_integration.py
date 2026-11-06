@@ -14,8 +14,8 @@ def test_default_model_uses_free_eligible_flash_with_bounded_output(monkeypatch)
     monkeypatch.setattr(genai, "Client", lambda **kwargs: type("Client", (), {"models": Models()})())
     assert generate_ai_text("A specific bakery hook") == "Useful caption"
     assert captured["model"] == "gemini-3.8-flash"
-    assert captured["config"].max_output_tokens <= 32768
-    assert captured["config"].thinking_config.thinking_level.value == "MEDIUM"
+    assert captured["config"].max_output_tokens == 2048
+    assert captured["config"].thinking_config.thinking_level.value == "LOW"
 
 
 def test_free_mode_rejects_paid_only_model_before_client_creation(monkeypatch):
@@ -38,7 +38,7 @@ def test_quota_exhaustion_is_reported_without_paid_fallback(monkeypatch):
     with TestClient(api.app) as client:
         response = client.post("/ai-text", json={"prompt":"A bakery tip"}, headers={"X-Social9-Forecasting-Key":"fixture-key"})
     assert response.status_code == 429
-    assert "Free AI quota exhausted" in response.json()["detail"]
+    assert "AI provider's usage limit" in response.json()["detail"]
 
 def test_photo_input_reaches_gemini_as_image_bytes(monkeypatch):
     import base64
@@ -148,3 +148,39 @@ def test_new_history_name_remains_compatible(monkeypatch):
             headers={"X-Social9-Forecasting-Key": "test-service-key"})
     assert response.status_code == 200
     assert len(captured) == 8
+
+
+@pytest.mark.parametrize('quota_id,value,expected',[
+ ('GenerateRequestsPerMinutePerProjectPerModel-FreeTier','10','rate_limit'),
+ ('GenerateRequestsPerDayPerProjectPerModel-FreeTier','100','daily_quota'),
+ ('GenerateRequestsPerDayPerProjectPerModel-FreeTier','0','quota_unavailable'),
+ ('unknown','1','unknown'),
+])
+def test_structured_quota_reason_and_retry_timing_are_safe(quota_id,value,expected):
+    from src.gemini_service import quota_failure,quota_http_error
+    error=type('Error',(),{'details':{'error':{'message':'private-key-and-prompt','details':[
+      {'@type':'type.googleapis.com/google.rpc.QuotaFailure','violations':[{'quotaId':quota_id,'quotaValue':value,'quotaDimensions':{'project':'private-project'}}]},
+      {'@type':'type.googleapis.com/google.rpc.RetryInfo','retryDelay':'23.2s'}]}}})()
+    failure=quota_failure(error)
+    assert failure.reason==expected and failure.retry_after==24
+    response=quota_http_error(failure)
+    assert response.status_code==429 and response.headers['Retry-After']=='24'
+    assert response.headers['X-AI-Limit-Reason']==expected
+    assert 'private' not in response.detail
+
+
+def test_calendar_keeps_large_budget_and_caption_budget_is_small(monkeypatch):
+    from google import genai
+    from src.gemini_service import generate_ai_text
+    from src.ai_calendar import generate_content_calendar
+    budgets=[]
+    class Models:
+        def generate_content(self,**kwargs):
+            budgets.append(kwargs['config'].max_output_tokens)
+            return type('Response',(),{'text':'{}'})()
+    monkeypatch.setenv('GEMINI_API_KEY','fixture-key')
+    monkeypatch.setenv('GEMINI_MAX_OUTPUT_TOKENS','32768')
+    monkeypatch.setattr(genai,'Client',lambda **kwargs:type('Client',(),{'models':Models()})())
+    generate_ai_text('Caption')
+    generate_content_calendar('linkedin',30,'Updates')
+    assert budgets==[2048,32768]

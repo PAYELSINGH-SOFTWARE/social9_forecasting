@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from .predict import forecast
-from .gemini_service import generate_ai_text, AIQuotaExhausted
+from .gemini_service import generate_ai_text, AIQuotaExhausted, quota_http_error
 from .ai_calendar import generate_content_calendar
 
 
@@ -98,6 +98,7 @@ class CalendarRequest(BaseModel):
 
 
 class AITextRequest(BaseModel):
+    max_output_tokens: int | None = Field(default=None, ge=256, le=4096)
     @field_validator("images")
     @classmethod
     def validate_images(cls, images: list[str]) -> list[str]:
@@ -211,8 +212,8 @@ Requirements:
             "caption": caption
         }
 
-    except AIQuotaExhausted:
-        raise HTTPException(429, "Free AI quota exhausted. Please try again later.")
+    except AIQuotaExhausted as error:
+        raise quota_http_error(error)
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -228,7 +229,8 @@ Requirements:
 def create_ai_text(request: AITextRequest):
     try:
         result = generate_ai_text(
-            request.prompt, **({"images": request.images, "json_mode": True} if request.images else {})
+            request.prompt, **({"images": request.images, "json_mode": True} if request.images else {}),
+            **({"max_output_tokens": request.max_output_tokens} if request.max_output_tokens is not None else {})
         )
 
         return {
@@ -236,8 +238,8 @@ def create_ai_text(request: AITextRequest):
             "response": result
         }
 
-    except AIQuotaExhausted:
-        raise HTTPException(429, "Free AI quota exhausted. Please try again later.")
+    except AIQuotaExhausted as error:
+        raise quota_http_error(error)
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -268,8 +270,8 @@ def create_ai_calendar(request: CalendarRequest):
             "calendar": calendar
         }
 
-    except AIQuotaExhausted:
-        raise HTTPException(429, "Free AI quota exhausted. Please try again later.")
+    except AIQuotaExhausted as error:
+        raise quota_http_error(error)
     except Exception as error:
         raise HTTPException(
             status_code=500,
